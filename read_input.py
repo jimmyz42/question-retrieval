@@ -1,16 +1,17 @@
 
 # coding: utf-8
 
-# In[2]:
+# In[5]:
 
 
 import numpy as np
 import torch
 import torch.utils.data
 from torch import Tensor
+import random
 
 
-# In[3]:
+# In[6]:
 
 
 def read_text_tokenized(text_tokenized_file, truncate_length=100):
@@ -23,7 +24,7 @@ def read_text_tokenized(text_tokenized_file, truncate_length=100):
     return question_id_to_title_body_tuple
 
 
-# In[4]:
+# In[7]:
 
 
 def read_train_ids(train_file, test_subset):
@@ -32,17 +33,17 @@ def read_train_ids(train_file, test_subset):
     train_id_instances = []
     i = 0
     for line in open(train_file):
-        if (test_subset is not None) and i > test_subset:
-            break
-        i += 1
         qid, positive_ids, negative_ids = line.split('\t')
         negative_ids = negative_ids.split()
         for positive_id in positive_ids.split():
             train_id_instances.append((qid, positive_id, negative_ids))
+            i += 1
+        if (test_subset is not None) and i > test_subset:
+            break
     return train_id_instances
 
 
-# In[5]:
+# In[8]:
 
 
 def make_word_to_vec_dict(word_embeddings_file):
@@ -55,14 +56,14 @@ def make_word_to_vec_dict(word_embeddings_file):
     return word_to_vec
 
 
-# In[6]:
+# In[9]:
 
 
 word_embeddings_file = 'askubuntu/vector/vectors_pruned.200.txt'
 word_to_vec = make_word_to_vec_dict(word_embeddings_file)
 
 
-# In[7]:
+# In[10]:
 
 
 def get_sentence_matrix_embedding(words, num_words=100):
@@ -84,7 +85,7 @@ def get_sentence_matrix_embedding(words, num_words=100):
     return sentence_mat
 
 
-# In[106]:
+# In[11]:
 
 
 class QuestionDataset(torch.utils.data.Dataset):
@@ -117,7 +118,8 @@ class QuestionDataset(torch.utils.data.Dataset):
         (q_id, positive_id, negative_ids) = self.train_id_instances[index]
         q = self.id_to_question[q_id]
         p = self.id_to_question[positive_id]
-        negatives = [self.id_to_question[neg_id] for neg_id in negative_ids]
+        negative_ids_sample = random.sample(negative_ids, 20)  # sample 20 random negatives
+        negatives = [self.id_to_question[neg_id] for neg_id in negative_ids_sample]
         q_title_embedding, q_body_embedding = self.get_question_embeddings([q])
         p_title_embedding, p_body_embedding = self.get_question_embeddings([p])
         neg_title_embeddings, neg_body_embeddings = self.get_question_embeddings(negatives)
@@ -126,3 +128,10 @@ class QuestionDataset(torch.utils.data.Dataset):
         return dict(q_body=q_body_embedding, q_title=q_title_embedding, 
                     p_body=p_body_embedding, p_title=p_title_embedding, 
                     neg_bodies=neg_body_embeddings, neg_titles=neg_title_embeddings)
+
+#dataset = QuestionDataset('askubuntu/text_tokenized.txt', 'askubuntu/train_random.txt', truncate=150)
+
+
+# In[12]:
+
+

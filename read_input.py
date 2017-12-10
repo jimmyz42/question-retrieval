@@ -100,10 +100,10 @@ class QuestionDataset(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.train_id_instances)
     
-#     def get_question_embedding(self, title_body_tuple):
-#         title_embedding = Tensor(get_sentence_matrix_embedding(title_body_tuple[0], self.truncate))
-#         body_embedding = Tensor(get_sentence_matrix_embedding(title_body_tuple[1], self.truncate))
-#         return title_embedding, body_embedding
+    def get_question_embedding(self, title_body_tuple):
+        title_embedding = Tensor(get_sentence_matrix_embedding(title_body_tuple[0], self.truncate))
+        body_embedding = Tensor(get_sentence_matrix_embedding(title_body_tuple[1], self.truncate))
+        return title_embedding, body_embedding
     
     def get_question_embeddings(self, title_body_tuples):
         num_questions = len(title_body_tuples)
@@ -120,18 +120,14 @@ class QuestionDataset(torch.utils.data.Dataset):
         p = self.id_to_question[positive_id]
         negative_ids_sample = random.sample(negative_ids, 20)  # sample 20 random negatives
         negatives = [self.id_to_question[neg_id] for neg_id in negative_ids_sample]
-        q_title_embedding, q_body_embedding = self.get_question_embeddings([q])
-        p_title_embedding, p_body_embedding = self.get_question_embeddings([p])
+        q_title_embedding, q_body_embedding = self.get_question_embedding(q)
+        p_title_embedding, p_body_embedding = self.get_question_embedding(p)
         neg_title_embeddings, neg_body_embeddings = self.get_question_embeddings(negatives)
         # negative_body_matrices is tensor of [num_negs x truncate_length x 200]
-        # q_body_matrix and positive_body_matrix are tensors of [1 x truncate_length x 200]
+        # q_body_matrix and positive_body_matrix are tensors of [truncate_length x 200]
         return dict(q_body=q_body_embedding, q_title=q_title_embedding, 
                     p_body=p_body_embedding, p_title=p_title_embedding, 
                     neg_bodies=neg_body_embeddings, neg_titles=neg_title_embeddings)
 
 #dataset = QuestionDataset('askubuntu/text_tokenized.txt', 'askubuntu/train_random.txt', truncate=150)
-
-
-# In[12]:
-
 

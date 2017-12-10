@@ -1,8 +1,17 @@
 
+# coding: utf-8
+
+# In[2]:
+
+
 import numpy as np
 import torch
 import torch.utils.data
 from torch import Tensor
+
+
+# In[3]:
+
 
 def read_text_tokenized(text_tokenized_file, truncate_length=100):
     # returns a dictionary of {question_id : (title, body)} key-value pairs
@@ -13,16 +22,28 @@ def read_text_tokenized(text_tokenized_file, truncate_length=100):
                                                         body.split()[:truncate_length])
     return question_id_to_title_body_tuple
 
-def read_train_ids(train_file):
+
+# In[4]:
+
+
+def read_train_ids(train_file, test_subset):
     # returns list of (question_id, positive_id, [negative_id, ...]) tuples
     # where all ids are strings
     train_id_instances = []
+    i = 0
     for line in open(train_file):
+        if (test_subset is not None) and i > test_subset:
+            break
+        i += 1
         qid, positive_ids, negative_ids = line.split('\t')
         negative_ids = negative_ids.split()
         for positive_id in positive_ids.split():
             train_id_instances.append((qid, positive_id, negative_ids))
     return train_id_instances
+
+
+# In[5]:
+
 
 def make_word_to_vec_dict(word_embeddings_file):
     word_to_vec = {}
@@ -33,8 +54,16 @@ def make_word_to_vec_dict(word_embeddings_file):
         word_to_vec[word] = vector
     return word_to_vec
 
+
+# In[6]:
+
+
 word_embeddings_file = 'askubuntu/vector/vectors_pruned.200.txt'
 word_to_vec = make_word_to_vec_dict(word_embeddings_file)
+
+
+# In[7]:
+
 
 def get_sentence_matrix_embedding(words, num_words=100):
     # returns [num_words x length_embedding] np matrix
@@ -54,12 +83,17 @@ def get_sentence_matrix_embedding(words, num_words=100):
             break
     return sentence_mat
 
+
+# In[106]:
+
+
 class QuestionDataset(torch.utils.data.Dataset):
-    def __init__(self, text_tokenized_file, train_file, truncate=100):
-        # id_to_question is an optional pre-computed id_to_question
+    def __init__(self, text_tokenized_file, train_file, truncate=100, test_subset=None):
+        # test_subset: An integer representing the max number of training entries to consider.
+        #              Used for quick debugging on a smaller subset of all training data.
         self.truncate = truncate
         self.id_to_question = read_text_tokenized(text_tokenized_file, truncate_length=self.truncate)
-        self.train_id_instances = read_train_ids(train_file)
+        self.train_id_instances = read_train_ids(train_file, test_subset)
         self.num_features = len(word_to_vec['.'])
         
     def __len__(self):
@@ -92,5 +126,3 @@ class QuestionDataset(torch.utils.data.Dataset):
         return dict(q_body=q_body_embedding, q_title=q_title_embedding, 
                     p_body=p_body_embedding, p_title=p_title_embedding, 
                     neg_bodies=neg_body_embeddings, neg_titles=neg_title_embeddings)
-
-#dataset = QuestionDataset('askubuntu/text_tokenized.txt', 'askubuntu/train_random.txt', truncate=150)

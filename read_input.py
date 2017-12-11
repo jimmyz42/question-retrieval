@@ -43,6 +43,30 @@ def read_train_ids(train_file, test_subset):
     return train_id_instances
 
 
+# In[75]:
+
+
+def read_eval_ids(eval_file, test_subset):
+    # returns list of (question_id, candidate_ids, labels) tuples
+    # where all ids are strings, and labels is a list of binary positive/negative for each candidate in candidate_ids
+    eval_id_instances = []
+    i = 0
+    for line in open(eval_file):
+        qid, positive_ids, candidate_ids, bm25scores = line.split('\t')
+        positive_ids_set = set(positive_ids.split())
+        candidate_ids = candidate_ids.split()
+        bm25scores = [float(score) for score in bm25scores.split()]
+        if len(positive_ids_set) == 0:
+            continue
+        labels = [1 if cid in positive_ids_set else 0 for cid in candidate_ids]
+        assert(sum(labels)==len(positive_ids_set))
+        eval_id_instances.append((qid, candidate_ids, labels, bm25scores))
+        i += 1
+        if (test_subset is not None) and i > test_subset:
+            break
+    return eval_id_instances
+
+
 # In[8]:
 
 
@@ -54,13 +78,6 @@ def make_word_to_vec_dict(word_embeddings_file):
         vector = np.array([float(x) for x in vector])
         word_to_vec[word] = vector
     return word_to_vec
-
-
-# In[9]:
-
-
-word_embeddings_file = 'askubuntu/vector/vectors_pruned.200.txt'
-word_to_vec = make_word_to_vec_dict(word_embeddings_file)
 
 
 # In[10]:
@@ -85,20 +102,26 @@ def get_sentence_matrix_embedding(words, num_words=100):
     return sentence_mat
 
 
-# In[11]:
+# In[9]:
+
+
+word_embeddings_file = 'askubuntu/vector/vectors_pruned.200.txt'
+word_to_vec = make_word_to_vec_dict(word_embeddings_file)
+
+
+# In[77]:
 
 
 class QuestionDataset(torch.utils.data.Dataset):
-    def __init__(self, text_tokenized_file, train_file, truncate=100, test_subset=None):
-        # test_subset: An integer representing the max number of training entries to consider.
-        #              Used for quick debugging on a smaller subset of all training data.
+    def __init__(self, text_tokenized, truncate):
+        # text_tokenized: Either a string representing the filename of text_tokenized, OR
+        #                 a precomputed id_to_question dictionary
         self.truncate = truncate
-        self.id_to_question = read_text_tokenized(text_tokenized_file, truncate_length=self.truncate)
-        self.train_id_instances = read_train_ids(train_file, test_subset)
+        if type(text_tokenized)==str:
+            self.id_to_question = read_text_tokenized(text_tokenized, truncate_length=self.truncate)
+        elif type(text_tokenized)==dict:
+            self.id_to_question = text_tokenized
         self.num_features = len(word_to_vec['.'])
-        
-    def __len__(self):
-        return len(self.train_id_instances)
     
     def get_question_embedding(self, title_body_tuple):
         title_embedding = Tensor(get_sentence_matrix_embedding(title_body_tuple[0], self.truncate))
@@ -113,21 +136,79 @@ class QuestionDataset(torch.utils.data.Dataset):
             title_embeddings[i] = get_sentence_matrix_embedding(title, self.truncate)
             body_embeddings[i] = get_sentence_matrix_embedding(body, self.truncate)
         return Tensor(title_embeddings), Tensor(body_embeddings)
+
+
+# In[78]:
+
+
+class TrainQuestionDataset(QuestionDataset):
+    def __init__(self, text_tokenized_file, train_file, truncate=100, test_subset=None):
+        # test_subset: An integer representing the max number of training entries to consider.
+        #              Used for quick debugging on a smaller subset of all training data.
+        self.train_id_instances = read_train_ids(train_file, test_subset)
+        QuestionDataset.__init__(self, text_tokenized_file, truncate)
+        
+    def __len__(self):
+        return len(self.train_id_instances)
     
     def __getitem__(self, index):
         (q_id, positive_id, negative_ids) = self.train_id_instances[index]
         q = self.id_to_question[q_id]
-        p = self.id_to_question[positive_id]
+        #p = self.id_to_question[positive_id]
         negative_ids_sample = random.sample(negative_ids, 20)  # sample 20 random negatives
-        negatives = [self.id_to_question[neg_id] for neg_id in negative_ids_sample]
+        candidate_ids = [positive_id]+negative_ids_sample
+        candidates = [self.id_to_question[id_] for id_ in candidate_ids]
         q_title_embedding, q_body_embedding = self.get_question_embedding(q)
-        p_title_embedding, p_body_embedding = self.get_question_embedding(p)
-        neg_title_embeddings, neg_body_embeddings = self.get_question_embeddings(negatives)
-        # negative_body_matrices is tensor of [num_negs x truncate_length x 200]
-        # q_body_matrix and positive_body_matrix are tensors of [truncate_length x 200]
+        # candidate_body_embeddings is tensor of [num_cands x truncate_length x 200]
+        # q_body_embedding and p_body_embedding are tensors of [truncate_length x 200]
+        candidate_title_embeddings, candidate_body_embeddings = self.get_question_embeddings(candidates)
         return dict(q_body=q_body_embedding, q_title=q_title_embedding, 
-                    p_body=p_body_embedding, p_title=p_title_embedding, 
-                    neg_bodies=neg_body_embeddings, neg_titles=neg_title_embeddings)
+                    candidate_bodies=candidate_body_embeddings, candidate_titles=candidate_title_embeddings)
 
-#dataset = QuestionDataset('askubuntu/text_tokenized.txt', 'askubuntu/train_random.txt', truncate=150)
+
+# In[82]:
+
+
+class EvalQuestionDataset(QuestionDataset):
+    def __init__(self, text_tokenized, eval_file, truncate=100, test_subset=None):
+        # test_subset: An integer representing the max number of entries to consider.
+        #              Used for quick debugging on a smaller subset of all eval data.
+        # text_tokenized: Either a string representing the filename of text_tokenized, OR
+        #                 a precomputed id_to_question dictionary
+        self.eval_id_instances = read_eval_ids(eval_file, test_subset)
+        QuestionDataset.__init__(self, text_tokenized, truncate)
+    
+    def __len__(self):
+        return len(self.eval_id_instances)
+    
+    def __getitem__(self, index):
+        (q_id, candidate_ids, labels, bm25scores) = self.eval_id_instances[index]
+        q = self.id_to_question[q_id]
+        candidates = [self.id_to_question[id_] for id_ in candidate_ids]
+        q_title_embedding, q_body_embedding = self.get_question_embedding(q)
+        candidate_title_embeddings, candidate_body_embeddings = self.get_question_embeddings(candidates)
+        # candidate_body_embedding is tensor of [num_cands x truncate_length x 200]
+        # q_body_embedding is tensor of [truncate_length x 200]
+        return dict(q_body=q_body_embedding, q_title=q_title_embedding, 
+                    candidate_bodies=candidate_body_embeddings, candidate_titles=candidate_title_embeddings, 
+                   labels=Tensor(labels), bm25scores=Tensor(bm25scores))
+
+
+# In[80]:
+
+
+# TEXT_TOKENIZED_FILE = 'askubuntu/text_tokenized.txt'
+# TRAIN_FILE = 'askubuntu/train_random.txt'
+# DEV_FILE = 'askubuntu/dev.txt'
+# TEST_FILE = 'askubuntu/test.txt'
+
+# TRUNCATE_LENGTH = 150
+# train_dataset = TrainQuestionDataset(TEXT_TOKENIZED_FILE, TRAIN_FILE, truncate=TRUNCATE_LENGTH, test_subset=9)
+
+
+# In[90]:
+
+
+# dev_dataset = EvalQuestionDataset(train_dataset.id_to_question, DEV_FILE, truncate=TRUNCATE_LENGTH, test_subset=9)
+# test_dataset = EvalQuestionDataset(train_dataset.id_to_question, TEST_FILE, truncate=TRUNCATE_LENGTH, test_subset=9)
 

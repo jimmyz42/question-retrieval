@@ -233,6 +233,8 @@ DROPOUT = 0.1
 BIDIRECTIONAL = False
 
 model = LSTM(200, 240, 1, TRUNCATE_LENGTH, DROPOUT, BIDIRECTIONAL)
+# Example of how to load a previously trained model
+# model.load_state_dict(torch.load('lstm_saved_models/epoch1.pkl'))
 
 
 # In[ ]:

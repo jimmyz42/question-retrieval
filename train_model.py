@@ -16,6 +16,7 @@ import torch.utils.data
 from tqdm import tqdm
 from torch import nn
 import numpy as np
+import os
 
 
 # In[ ]:
@@ -23,16 +24,19 @@ import numpy as np
 
 class LSTM(nn.Module):
     # todo: fix parameters, structure, etc
-    def __init__(self, input_dim, hidden_dim, num_layers, truncate_length):
+    def __init__(self, input_dim, hidden_dim, num_layers, truncate_length, dropout=0.0, bidirectional=False):
         super(LSTM, self).__init__()
-
+        if bidirectional:
+            print('Bidirectinoal LSTM not implemented!!!')
+            assert(bidirectional==False)
         self.input_dim = input_dim
         self.num_layers = num_layers
         self.hidden_dim = hidden_dim
         self.truncate_length= truncate_length
         # The LSTM takes word embeddings as inputs, and outputs hidden states
         # with dimensionality hidden_dim.
-        self.lstm = nn.LSTM(input_dim, hidden_dim, num_layers, batch_first=True)
+        self.lstm = nn.LSTM(input_dim, hidden_dim, num_layers, batch_first=True, bidirectional=bidirectional)
+        self.dropout = nn.Dropout(p=dropout)
         #self.hidden = self.init_hidden()
 
     def init_hidden(self, batch_size):
@@ -47,7 +51,8 @@ class LSTM(nn.Module):
         batch_size = sentence_inp.size()[0]
         self.hidden = self.init_hidden(batch_size)
         # lstm expects batch_size x truncate_length x num_features because of batch_first=True
-        outputs, self.hidden = self.lstm(sentence_inp)
+        outputs_pre_dropout, self.hidden = self.lstm(sentence_inp)
+        outputs = self.dropout(outputs_pre_dropout)
         out_masked = torch.mul(outputs, mask.unsqueeze(2).expand_as(outputs))
         out_masked_avg = torch.div(out_masked.sum(dim=1), 
                                    mask.sum(dim=1).unsqueeze(1).expand(batch_size, self.hidden_dim))
@@ -110,7 +115,7 @@ def evaluate(all_ranked_labels):
 # In[ ]:
 
 
-def run_epoch(dataset, is_training, model, optimizer, batch_size, margin):
+def run_epoch(dataset, is_training, model, optimizer, batch_size, margin, save_path):
     data_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size,
                                               shuffle=True, drop_last=True)
     losses = []
@@ -161,6 +166,8 @@ def run_epoch(dataset, is_training, model, optimizer, batch_size, margin):
             for i in range(batch_size): 
                 all_ranked_labels.append(labels[i][ind.data[i]])
     if is_training:
+        # save the model
+        torch.save(model.state_dict(), save_path)
         avg_loss = np.mean(losses)
         return avg_loss
     else:
@@ -171,17 +178,27 @@ def run_epoch(dataset, is_training, model, optimizer, batch_size, margin):
 # In[ ]:
 
 
-def train_model(train_data, dev_data, test_data, model, batch_size=50, margin=1, num_epochs=50, lr=1.0, weight_decay=0):
+def train_model(train_data, dev_data, test_data, model, save_dir=None, batch_size=50, margin=1, num_epochs=50, lr=1.0, weight_decay=0):
+    if (save_dir is not None) and (not os.path.exists(save_dir)):
+        os.makedirs(save_dir)
     print("start train_model")
+    print("****************************************")
+    print("Batch size: {}, margin: {}, num_epochs: {}, lr: {}".format(batch_size, margin, num_epochs, lr))
+    print("Model", model)
+    print("*****************************************")
     #optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
-    optimizer = torch.optim.Adam(model.parameters())
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     result_table = PrettyTable(["Epoch", "train loss", "dev MAP", "dev MRR", "dev P@1", "dev P@5"] +
                                     ["tst MAP", "tst MRR", "tst P@1", "tst P@5"])
     for epoch in range(1, num_epochs + 1):
         print("epoch", epoch)
-        train_loss = run_epoch(train_data, True, model, optimizer, batch_size, margin)
-        dev_MAP, dev_MRR, dev_P1, dev_P5 = run_epoch(dev_data, False, model, optimizer, batch_size, margin)
-        test_MAP, test_MRR, test_P1, test_P5 = run_epoch(test_data, False, model, optimizer, batch_size, margin)
+        if save_dir is None:
+            save_path = None
+        else:
+            save_path = os.path.join(save_dir, 'epoch{}.pkl'.format(epoch))
+        train_loss = run_epoch(train_data, True, model, optimizer, batch_size, margin, save_path)
+        dev_MAP, dev_MRR, dev_P1, dev_P5 = run_epoch(dev_data, False, model, optimizer, batch_size, margin, save_path)
+        test_MAP, test_MRR, test_P1, test_P5 = run_epoch(test_data, False, model, optimizer, batch_size, margin, save_path)
         result_table.add_row(
                             [ epoch ] +
                             [ "%.2f" % x for x in [train_loss] + [ dev_MAP, dev_MRR, dev_P1, dev_P5 ] +
@@ -211,14 +228,26 @@ test_dataset = EvalQuestionDataset(train_dataset.id_to_question, TEST_FILE, trun
 # In[ ]:
 
 
-BATCH_SIZE = 3
-NUM_EPOCHS = 2
-MARGIN = 0.5
-model = LSTM(200, 240, 1, TRUNCATE_LENGTH)
+DROPOUT_PROBS = [0.0, 0.1, 0.2, 0.3] # Taken from paper
+DROPOUT = 0.1
+BIDIRECTIONAL = False
+
+model = LSTM(200, 240, 1, TRUNCATE_LENGTH, DROPOUT, BIDIRECTIONAL)
 
 
 # In[ ]:
 
 
-train_model(train_dataset, dev_dataset, test_dataset, model, num_epochs=NUM_EPOCHS, margin=MARGIN, batch_size=BATCH_SIZE)
+BATCH_SIZE = 3
+NUM_EPOCHS = 2
+MARGINS = [0.2, 0.4, 0.6] # Some student on piazza said 0.2 worked really well
+MARGIN = 0.2
+LRS = [1e-3, 3e-4] # Taken from paper
+LR = 1e-3
+
+SAVE_DIR = 'lstm_saved_models'
+
+train_model(train_dataset, dev_dataset, test_dataset, model, SAVE_DIR,
+            num_epochs=NUM_EPOCHS, 
+            margin=MARGIN, batch_size=BATCH_SIZE, lr=LR)
 

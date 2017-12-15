@@ -105,7 +105,7 @@ def get_sentence_matrix_embedding(words, num_words=100):
         # TODO: IS JUST SKIPPING THE WORD THE RIGHT APPROACH?
         if word in word_to_idx:
             sentence_mat[i] = word_to_idx[word]
-            mask[i] = 1
+        mask[i] = 1
         i += 1
         if i == num_words:
             break

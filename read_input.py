@@ -71,32 +71,40 @@ def read_eval_ids(eval_file, test_subset):
 # In[ ]:
 
 
-def make_word_to_vec_dict(word_embeddings_file):
-    word_to_vec = {}
-    for line in open(word_embeddings_file):
+def read_word_embeddings(word_embeddings_file):
+    #word_to_vec = {}
+    word_to_idx = {}
+    embeddings = []
+    for i, line in enumerate(open(word_embeddings_file)):
         split_line = line.split()
         word, vector = split_line[0], split_line[1:]
         vector = np.array([float(x) for x in vector])
-        word_to_vec[word] = vector
-    return word_to_vec
+        #word_to_vec[word] = vector
+        word_to_idx[word] = i
+        embeddings.append(vector)
+    # add one for padding
+    embeddings.append(np.zeros(len(vector)))
+    padding_idx = i+1
+    embeddings = np.array(embeddings)
+    return word_to_idx, embeddings, padding_idx 
 
 
 # In[ ]:
 
 
 def get_sentence_matrix_embedding(words, num_words=100):
-    # returns [num_words x length_embedding] np matrix
+    # returns [num_words] np matrix
     # matrix may be padded
     if len(words) >  num_words:
         # we shouldn't be printing here because we should have truncated already
         print(len(words))
-    sentence_mat = np.zeros((num_words, NUM_FEATURES))
+    sentence_mat = np.ones(num_words) * padding_idx
     i = 0
     mask = np.zeros(num_words)
     for word in words:
         # TODO: IS JUST SKIPPING THE WORD THE RIGHT APPROACH?
-        if word in word_to_vec:
-            sentence_mat[i] = word_to_vec[word]
+        if word in word_to_idx:
+            sentence_mat[i] = word_to_idx[word]
             mask[i] = 1
         i += 1
         if i == num_words:
@@ -109,8 +117,8 @@ def get_sentence_matrix_embedding(words, num_words=100):
 
 print('reading word embedding file')
 word_embeddings_file = 'askubuntu/vector/vectors_pruned.200.txt'
-word_to_vec = make_word_to_vec_dict(word_embeddings_file)
-NUM_FEATURES = len(word_to_vec['.'])
+word_to_idx, embeddings, padding_idx = read_word_embeddings(word_embeddings_file)
+NUM_FEATURES = embeddings.shape[1]
 
 
 # In[ ]:
@@ -125,7 +133,7 @@ class QuestionDataset(torch.utils.data.Dataset):
             self.id_to_question = read_text_tokenized(text_tokenized, truncate_length=self.truncate)
         elif type(text_tokenized)==dict:
             self.id_to_question = text_tokenized
-        self.num_features = len(word_to_vec['.'])
+        #self.num_features = len(word_to_vec['.'])
     
     def get_question_embedding(self, title_body_tuple):
         title_embedding, title_mask = get_sentence_matrix_embedding(title_body_tuple[0], self.truncate)
@@ -134,8 +142,8 @@ class QuestionDataset(torch.utils.data.Dataset):
     
     def get_question_embeddings(self, title_body_tuples):
         num_questions = len(title_body_tuples)
-        title_embeddings = np.zeros((num_questions, self.truncate, self.num_features))
-        body_embeddings = np.zeros((num_questions, self.truncate, self.num_features))
+        title_embeddings = np.zeros((num_questions, self.truncate))
+        body_embeddings = np.zeros((num_questions, self.truncate))
         title_masks = np.zeros((num_questions, self.truncate))
         body_masks = np.zeros((num_questions, self.truncate))
         for i, (title, body) in enumerate(title_body_tuples):
@@ -153,10 +161,10 @@ class QuestionDataset(torch.utils.data.Dataset):
         q_title_embedding, q_body_embedding, q_title_mask, q_body_mask = self.get_question_embedding(q)
         (candidate_title_embeddings, candidate_body_embeddings, 
          candidate_title_masks, candidate_body_masks) = self.get_question_embeddings(candidates)
-        # candidate_*_embeddings is tensor of [num_cands x truncate_length x 200]
-        # q_*_embedding is tensor of [truncate_length x 200]
-        return dict(q_body=q_body_embedding, q_title=q_title_embedding,
-            candidate_bodies=candidate_body_embeddings, candidate_titles=candidate_title_embeddings, 
+        # candidate_*_embeddings is tensor of [num_cands x truncate_length]
+        # q_*_embedding is tensor of [truncate_length]
+        return dict(q_body=q_body_embedding.long(), q_title=q_title_embedding.long(),
+            candidate_bodies=candidate_body_embeddings.long(), candidate_titles=candidate_title_embeddings.long(), 
             q_body_mask = q_body_mask, q_title_mask=q_title_mask, 
             candidate_body_masks=candidate_body_masks, candidate_title_masks=candidate_title_masks)
 
@@ -214,7 +222,8 @@ class EvalQuestionDataset(QuestionDataset):
 
 # TRUNCATE_LENGTH = 150
 # train_dataset = TrainQuestionDataset(TEXT_TOKENIZED_FILE, TRAIN_FILE, truncate=TRUNCATE_LENGTH, test_subset=9)
-
+# id_to_question = train_dataset.id_to_question
 # dev_dataset = EvalQuestionDataset(train_dataset.id_to_question, DEV_FILE, truncate=TRUNCATE_LENGTH, test_subset=9)
 # test_dataset = EvalQuestionDataset(train_dataset.id_to_question, TEST_FILE, truncate=TRUNCATE_LENGTH, test_subset=9)
+# train_dataset[0]['q_body']
 

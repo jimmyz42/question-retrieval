@@ -2,6 +2,10 @@ vectors_stackexchange.txt
 askubuntu/
 Android/
 
+# Models
+cnn_saved_models/
+out/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

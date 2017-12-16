@@ -1,8 +1,7 @@
 
 # coding: utf-8
 
-# In[ ]:
-
+# In[1]:
 
 import read_input
 from read_input import TrainQuestionDataset, EvalQuestionDataset, read_word_embeddings
@@ -22,8 +21,7 @@ import sys
 from models import LSTM, CNN, evaluate, DomainClassifier
 
 
-# In[ ]:
-
+# In[2]:
 
 def run_epoch(dataset, is_training, model, optimizer, batch_size, margin, save_path):
     data_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size,
@@ -67,7 +65,7 @@ def run_epoch(dataset, is_training, model, optimizer, batch_size, margin, save_p
             loss = torch.nn.MultiMarginLoss(margin=margin)(cos, target)
             #total_loss = loss - domain_loss
             #total_loss.backward()
-            loss.backward(retain_graph=False)
+            loss.backward() #loss.backward(retain_graph=False)
             optimizer.step()
             losses.append(loss.cpu().data[0])
         else:
@@ -86,8 +84,7 @@ def run_epoch(dataset, is_training, model, optimizer, batch_size, margin, save_p
     
 
 
-# In[ ]:
-
+# In[3]:
 
 def train_model(train_data, dev_data, test_data, model, save_dir=None, batch_size=50, margin=1, num_epochs=50, lr=1.0, weight_decay=0):
     if (save_dir is not None) and (not os.path.exists(save_dir)):
@@ -118,8 +115,7 @@ def train_model(train_data, dev_data, test_data, model, save_dir=None, batch_siz
         sys.stdout.flush()
 
 
-# In[ ]:
-
+# In[4]:
 
 WORD_EMBEDDINGS_FILE = 'askubuntu/vector/vectors_pruned.200.txt'
 
@@ -134,35 +130,34 @@ word_to_idx, embeddings, padding_idx = read_input.read_word_embeddings(WORD_EMBE
 
 # In[ ]:
 
-
-train_dataset = TrainQuestionDataset(TEXT_TOKENIZED_FILE, TRAIN_FILE, word_to_idx, padding_idx, truncate=TRUNCATE_LENGTH, test_subset=1000)
-dev_dataset = EvalQuestionDataset(train_dataset.id_to_question, DEV_FILE, word_to_idx, padding_idx, truncate=TRUNCATE_LENGTH, test_subset=1000)
-test_dataset = EvalQuestionDataset(train_dataset.id_to_question, TEST_FILE, word_to_idx, padding_idx, truncate=TRUNCATE_LENGTH, test_subset=1000)
+train_dataset = TrainQuestionDataset(TEXT_TOKENIZED_FILE, TRAIN_FILE, word_to_idx, padding_idx, truncate=TRUNCATE_LENGTH, test_subset=None)
+dev_dataset = EvalQuestionDataset(train_dataset.id_to_question, DEV_FILE, word_to_idx, padding_idx, truncate=TRUNCATE_LENGTH, test_subset=None)
+test_dataset = EvalQuestionDataset(train_dataset.id_to_question, TEST_FILE, word_to_idx, padding_idx, truncate=TRUNCATE_LENGTH, test_subset=None)
 
 
 # In[ ]:
-
 
 DROPOUT_PROBS = [0.0, 0.1, 0.2, 0.3] # Taken from paper
 DROPOUT = 0.1
 BIDIRECTIONAL = False
 
-model = LSTM(embeddings, padding_idx, 15, 1, TRUNCATE_LENGTH, DROPOUT, BIDIRECTIONAL)
+#model = LSTM(embeddings, padding_idx, 15, 1, TRUNCATE_LENGTH, DROPOUT, BIDIRECTIONAL)
+model = CNN(embeddings, padding_idx, 667, TRUNCATE_LENGTH, DROPOUT)
 # Example of how to load a previously trained model
 # model.load_state_dict(torch.load('lstm_saved_models/epoch1.pkl'))
 
 
 # In[ ]:
 
-
-BATCH_SIZE = 20
-NUM_EPOCHS = 40
+BATCH_SIZE = 20 # Normally use 16
+NUM_EPOCHS = 50 # Normally use 50, but can stop early at 20
 MARGINS = [0.2, 0.4, 0.6] # Some student on piazza said 0.2 worked really well
 MARGIN = 0.2
 LRS = [1e-3, 3e-4] # Taken from paper
 LR = 1e-3
 
-SAVE_DIR = 'lstm_saved_models'
+#SAVE_DIR = 'lstm_saved_models'
+SAVE_DIR = 'cnn_saved_models'
 
 train_model(train_dataset, dev_dataset, test_dataset, model, SAVE_DIR,
             num_epochs=NUM_EPOCHS, 
@@ -172,5 +167,4 @@ train_model(train_dataset, dev_dataset, test_dataset, model, SAVE_DIR,
 # In[ ]:
 
 
-# TODO train CNN
 

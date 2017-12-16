@@ -21,7 +21,8 @@ import sys
 
 from models import LSTM, CNN, evaluate, DomainClassifier
 
-
+def hasnan(var): 
+    return np.isnan(np.sum(var.data.numpy()))
 # In[ ]:
 
 
@@ -52,6 +53,10 @@ def run_epoch(dataset, is_training, model, optimizer, batch_size, margin, save_p
                                cand_body_masks.view(batch_size*num_cands, TRUNCATE_LENGTH)) 
         cand_title_encs = model(cand_titles.view(batch_size*num_cands, TRUNCATE_LENGTH),
                                 cand_title_masks.view(batch_size*num_cands, TRUNCATE_LENGTH))
+	assert(not hasnan(q_body_enc)), q_body_enc
+	assert(not hasnan(q_title_enc)), q_title_enc
+	assert(not hasnan(cand_body_encs))
+	assert(not hasnan(cand_title_encs))
         q_enc = q_title_enc + q_body_enc / 2.0
         candidate_encs = cand_title_encs + cand_body_encs / 2.0
         enc_length = q_enc.size()[-1]
@@ -61,7 +66,7 @@ def run_epoch(dataset, is_training, model, optimizer, batch_size, margin, save_p
         candidate_encs = candidate_encs.view(batch_size, num_cands, -1) # batch_size x num_cands x enc_length
         query_encs = q_enc.view(batch_size, 1, -1).expand_as(candidate_encs) # batch_size x (num_cands) x enc_length
         cos = torch.nn.CosineSimilarity(dim=2, eps=1e-08)(candidate_encs, query_encs) # batch_size x (num_cands)
-        
+        assert(not hasnan(cos)) 
         if is_training:
             target = Variable(torch.zeros(batch_size).long(), requires_grad=True)
             loss = torch.nn.MultiMarginLoss(margin=margin)(cos, target)
@@ -135,9 +140,9 @@ word_to_idx, embeddings, padding_idx = read_input.read_word_embeddings(WORD_EMBE
 # In[ ]:
 
 
-train_dataset = TrainQuestionDataset(TEXT_TOKENIZED_FILE, TRAIN_FILE, word_to_idx, padding_idx, truncate=TRUNCATE_LENGTH, test_subset=1000)
-dev_dataset = EvalQuestionDataset(train_dataset.id_to_question, DEV_FILE, word_to_idx, padding_idx, truncate=TRUNCATE_LENGTH, test_subset=1000)
-test_dataset = EvalQuestionDataset(train_dataset.id_to_question, TEST_FILE, word_to_idx, padding_idx, truncate=TRUNCATE_LENGTH, test_subset=1000)
+train_dataset = TrainQuestionDataset(TEXT_TOKENIZED_FILE, TRAIN_FILE, word_to_idx, padding_idx, truncate=TRUNCATE_LENGTH, test_subset=10000)
+dev_dataset = EvalQuestionDataset(train_dataset.id_to_question, DEV_FILE, word_to_idx, padding_idx, truncate=TRUNCATE_LENGTH)
+test_dataset = EvalQuestionDataset(train_dataset.id_to_question, TEST_FILE, word_to_idx, padding_idx, truncate=TRUNCATE_LENGTH)
 
 
 # In[ ]:
@@ -147,7 +152,7 @@ DROPOUT_PROBS = [0.0, 0.1, 0.2, 0.3] # Taken from paper
 DROPOUT = 0.1
 BIDIRECTIONAL = False
 
-model = LSTM(embeddings, padding_idx, 15, 1, TRUNCATE_LENGTH, DROPOUT, BIDIRECTIONAL)
+model = LSTM(embeddings, padding_idx, 240, 1, TRUNCATE_LENGTH, DROPOUT, BIDIRECTIONAL)
 # Example of how to load a previously trained model
 # model.load_state_dict(torch.load('lstm_saved_models/epoch1.pkl'))
 
@@ -155,7 +160,7 @@ model = LSTM(embeddings, padding_idx, 15, 1, TRUNCATE_LENGTH, DROPOUT, BIDIRECTI
 # In[ ]:
 
 
-BATCH_SIZE = 20
+BATCH_SIZE = 40
 NUM_EPOCHS = 40
 MARGINS = [0.2, 0.4, 0.6] # Some student on piazza said 0.2 worked really well
 MARGIN = 0.2

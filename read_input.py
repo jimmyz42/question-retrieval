@@ -20,8 +20,14 @@ def read_text_tokenized(text_tokenized_file, truncate_length=100):
     question_id_to_title_body_tuple = {}
     for line in open(text_tokenized_file, 'r'):
         question_id, title, body = line.split('\t')
-        question_id_to_title_body_tuple[question_id] = (title.split()[:truncate_length], 
-                                                        body.split()[:truncate_length])
+        title = title.split()[:truncate_length]
+        body = body.split()[:truncate_length]
+	if len(title) == 0:
+	    title = ['title']
+        if len(body) == 0:
+            body = ['body']
+	question_id_to_title_body_tuple[question_id] = (title, 
+                                                        body)
     return question_id_to_title_body_tuple
 
 
@@ -156,6 +162,7 @@ class QuestionDataset(torch.utils.data.Dataset):
             i += 1
             if i == num_words:
                 break
+        assert(sum(mask)>0), words
         return sentence_mat, mask
 
     def get_question_embedding(self, title_body_tuple):

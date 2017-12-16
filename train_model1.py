@@ -1,11 +1,11 @@
 
 # coding: utf-8
 
-# In[1]:
+# In[ ]:
 
 
 import read_input
-from read_input import TrainQuestionDataset, EvalQuestionDataset, embeddings, padding_idx
+from read_input import TrainQuestionDataset, EvalQuestionDataset, read_word_embeddings
 from prettytable import PrettyTable
 
 from evaluation import Evaluation
@@ -17,10 +17,12 @@ from tqdm import tqdm
 from torch import nn
 import numpy as np
 import os
+import sys
+
 from models import LSTM, CNN, evaluate, DomainClassifier
 
 
-# In[2]:
+# In[ ]:
 
 
 def run_epoch(dataset, is_training, model, optimizer, batch_size, margin, save_path):
@@ -34,8 +36,8 @@ def run_epoch(dataset, is_training, model, optimizer, batch_size, margin, save_p
         model.eval()
     requires_grad = False
     for batch in tqdm(data_loader):
-        q_body = Variable(batch["q_body"], requires_grad=requires_grad) # batch_size x truncate_length x 200]
-        cand_bodies = Variable(batch["candidate_bodies"], requires_grad=requires_grad) # batch_size x num_cands x truncate_length x 200
+        q_body = Variable(batch["q_body"], requires_grad=requires_grad) # batch_size x truncate_length
+        cand_bodies = Variable(batch["candidate_bodies"], requires_grad=requires_grad) # batch_size x num_cands x truncate_length
         q_title = Variable(batch["q_title"], requires_grad=requires_grad)
         cand_titles = Variable(batch["candidate_titles"], requires_grad=requires_grad)
         q_body_mask = Variable(batch["q_body_mask"], requires_grad=requires_grad) # batch_size x truncate_length
@@ -84,7 +86,7 @@ def run_epoch(dataset, is_training, model, optimizer, batch_size, margin, save_p
     
 
 
-# In[3]:
+# In[ ]:
 
 
 def train_model(train_data, dev_data, test_data, model, save_dir=None, batch_size=50, margin=1, num_epochs=50, lr=1.0, weight_decay=0):
@@ -113,10 +115,13 @@ def train_model(train_data, dev_data, test_data, model, save_dir=None, batch_siz
                             [ "%.2f" % x for x in [train_loss] + [ dev_MAP, dev_MRR, dev_P1, dev_P5 ] +
                                         [ test_MAP, test_MRR, test_P1, test_P5 ] ])
         print("{}".format(result_table))
+        sys.stdout.flush()
 
 
-# In[4]:
+# In[ ]:
 
+
+WORD_EMBEDDINGS_FILE = 'askubuntu/vector/vectors_pruned.200.txt'
 
 TEXT_TOKENIZED_FILE = 'askubuntu/text_tokenized.txt'
 TRAIN_FILE = 'askubuntu/train_random.txt'
@@ -124,43 +129,48 @@ DEV_FILE = 'askubuntu/dev.txt'
 TEST_FILE = 'askubuntu/test.txt'
 
 TRUNCATE_LENGTH = 100
+word_to_idx, embeddings, padding_idx = read_input.read_word_embeddings(WORD_EMBEDDINGS_FILE)
 
 
-# In[10]:
+# In[ ]:
 
 
-train_dataset = TrainQuestionDataset(TEXT_TOKENIZED_FILE, TRAIN_FILE, truncate=TRUNCATE_LENGTH, test_subset=None)
-dev_dataset = EvalQuestionDataset(train_dataset.id_to_question, DEV_FILE, truncate=TRUNCATE_LENGTH, test_subset=None)
-test_dataset = EvalQuestionDataset(train_dataset.id_to_question, TEST_FILE, truncate=TRUNCATE_LENGTH, test_subset=None)
+train_dataset = TrainQuestionDataset(TEXT_TOKENIZED_FILE, TRAIN_FILE, word_to_idx, padding_idx, truncate=TRUNCATE_LENGTH, test_subset=1000)
+dev_dataset = EvalQuestionDataset(train_dataset.id_to_question, DEV_FILE, word_to_idx, padding_idx, truncate=TRUNCATE_LENGTH, test_subset=1000)
+test_dataset = EvalQuestionDataset(train_dataset.id_to_question, TEST_FILE, word_to_idx, padding_idx, truncate=TRUNCATE_LENGTH, test_subset=1000)
 
 
-# In[11]:
+# In[ ]:
 
 
 DROPOUT_PROBS = [0.0, 0.1, 0.2, 0.3] # Taken from paper
 DROPOUT = 0.1
 BIDIRECTIONAL = False
 
-#model = LSTM(embeddings, padding_idx, 15, 1, TRUNCATE_LENGTH, DROPOUT, BIDIRECTIONAL)
-model = CNN(embeddings, padding_idx, 667, TRUNCATE_LENGTH, DROPOUT)
+model = LSTM(embeddings, padding_idx, 15, 1, TRUNCATE_LENGTH, DROPOUT, BIDIRECTIONAL)
 # Example of how to load a previously trained model
 # model.load_state_dict(torch.load('lstm_saved_models/epoch1.pkl'))
 
 
-# In[12]:
+# In[ ]:
 
 
-BATCH_SIZE = 20 # Normally use 20
-NUM_EPOCHS = 50 # Normally use 50, but can stop early at 20
+BATCH_SIZE = 20
+NUM_EPOCHS = 40
 MARGINS = [0.2, 0.4, 0.6] # Some student on piazza said 0.2 worked really well
 MARGIN = 0.2
 LRS = [1e-3, 3e-4] # Taken from paper
 LR = 1e-3
 
-#SAVE_DIR = 'lstm_saved_models'
-SAVE_DIR = 'cnn_saved_models'
+SAVE_DIR = 'lstm_saved_models'
 
 train_model(train_dataset, dev_dataset, test_dataset, model, SAVE_DIR,
             num_epochs=NUM_EPOCHS, 
             margin=MARGIN, batch_size=BATCH_SIZE, lr=LR)
+
+
+# In[ ]:
+
+
+# TODO train CNN
 

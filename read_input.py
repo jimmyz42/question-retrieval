@@ -22,12 +22,11 @@ def read_text_tokenized(text_tokenized_file, truncate_length=100):
         question_id, title, body = line.split('\t')
         title = title.split()[:truncate_length]
         body = body.split()[:truncate_length]
-	if len(title) == 0:
-	    title = ['title']
+        if len(title) == 0:
+            title = ['title']
         if len(body) == 0:
             body = ['body']
-	question_id_to_title_body_tuple[question_id] = (title, 
-                                                        body)
+        question_id_to_title_body_tuple[question_id] = (title, body)
     return question_id_to_title_body_tuple
 
 
@@ -162,7 +161,7 @@ class QuestionDataset(torch.utils.data.Dataset):
             i += 1
             if i == num_words:
                 break
-        assert(sum(mask)>0), words
+        assert(sum(mask)>0), word
         return sentence_mat, mask
 
     def get_question_embedding(self, title_body_tuple):
@@ -283,7 +282,7 @@ class AndroidQuestionCorpusDataset(QuestionDataset):
             q_body_mask = q_body_mask, q_title_mask=q_title_mask)
 
 
-# In[ ]:
+# In[1]:
 
 
 class TransferTrainQuestionDataset(torch.utils.data.Dataset):
@@ -293,8 +292,9 @@ class TransferTrainQuestionDataset(torch.utils.data.Dataset):
         # Construct a mixed dataset
         # Where dataset[i = 0 to n_ubuntu-1] is ubuntu[i], and
         #       dataset[i = n_ubuntu to n_ubuntu+n_android-1] is android[i-n_ubuntu]
-        self.ubuntu_dataset = TrainQuestionDataset(ubuntu_corpus, ubuntu_train_file, word_to_idx, padding_idx, truncate=TRUNCATE_LENGTH, test_subset=test_subset)
-        self.android_dataset = AndroidQuestionCorpusDataset(android_corpus, word_to_idx, padding_idx, truncate=TRUNCATE_LENGTH, test_subset=test_subset)
+        self.truncate = truncate
+        self.ubuntu_dataset = TrainQuestionDataset(ubuntu_corpus, ubuntu_train_file, word_to_idx, padding_idx, truncate=truncate, test_subset=test_subset)
+        self.android_dataset = AndroidQuestionCorpusDataset(android_corpus, word_to_idx, padding_idx, truncate=truncate, test_subset=test_subset)
         self.n_ubuntu = len(self.ubuntu_dataset)
         self.n_android = len(self.android_dataset)
         
@@ -309,6 +309,11 @@ class TransferTrainQuestionDataset(torch.utils.data.Dataset):
         else:
             item = self.android_dataset[index - self.n_ubuntu]
             item['isUbuntu'] = 0
+            # create dummy items to get batches in data_loader to play nice
+            item['candidate_bodies'] = torch.zeros(21, self.truncate).long()
+            item['candidate_titles'] = torch.zeros(21, self.truncate).long()
+            item['candidate_body_masks'] = torch.zeros(21, self.truncate)
+            item['candidate_title_masks'] = torch.zeros(21, self.truncate)
         return item
 
 

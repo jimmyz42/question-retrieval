@@ -5,6 +5,7 @@ Android/
 # Models
 cnn_saved_models/
 lstm_saved_models/
+domain_saved_models/
 out/
 
 # Byte-compiled / optimized / DLL files

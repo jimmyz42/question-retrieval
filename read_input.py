@@ -124,8 +124,11 @@ def read_word_embeddings(word_embeddings_file):
         #word_to_vec[word] = vector
         word_to_idx[word] = i
         embeddings.append(vector)
+    # last vector might not be full length
+    if len(vector) < len(embeddings[0]):
+        embeddings.pop()
     # add one for padding
-    embeddings.append(np.zeros(len(vector)))
+    embeddings.append(np.zeros(len(embeddings[0])))
     padding_idx = i+1
     embeddings = np.array(embeddings)
     return word_to_idx, embeddings, padding_idx 
@@ -266,11 +269,15 @@ class AndroidEvalQuestionDataset(QuestionDataset):
 
 class AndroidQuestionCorpusDataset(QuestionDataset):
     # Dataset where each data item is (question_title, question_body)
-    def __init__(self, text_tokenized, word_to_idx, padding_idx, truncate=100, test_subset=None):
+    def __init__(self, text_tokenized, word_to_idx, padding_idx, truncate=100, test_subset=22840):
         QuestionDataset.__init__(self, text_tokenized, word_to_idx, padding_idx, truncate)
         self.corpus = []
+        i = 0
         for id_ in self.id_to_question:
             self.corpus.append(self.id_to_question[id_])
+            i += 1
+            if i > test_subset:
+                break
         
     def __len__(self):
         return len(self.corpus)
@@ -282,7 +289,7 @@ class AndroidQuestionCorpusDataset(QuestionDataset):
             q_body_mask = q_body_mask, q_title_mask=q_title_mask)
 
 
-# In[1]:
+# In[ ]:
 
 
 class TransferTrainQuestionDataset(torch.utils.data.Dataset):

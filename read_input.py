@@ -19,7 +19,7 @@ def read_text_tokenized(text_tokenized_file, truncate_length=100):
     print('read corpus', text_tokenized_file)
     question_id_to_title_body_tuple = {}
     for line in open(text_tokenized_file, 'r'):
-        question_id, title, body = line.split('\t')
+        question_id, title, body = line.lower().split('\t')
         title = title.split()[:truncate_length]
         body = body.split()[:truncate_length]
         if len(title) == 0:
@@ -79,6 +79,7 @@ def read_ubuntu_eval_ids(eval_file, test_subset):
 def read_android_eval_ids(pos_file_name, neg_file_name, test_subset=None):
     # returns list of (question_id, candidate_ids, labels) tuples
     # where all ids are strings, and labels is a list of binary positive/negative for each candidate in candidate_ids 
+    
     eval_id_instances = []
     pos_file = open(pos_file_name)
     neg_file = open(neg_file_name)
@@ -127,10 +128,11 @@ def read_word_embeddings(word_embeddings_file):
     # last vector might not be full length
     if len(vector) < len(embeddings[0]):
         embeddings.pop()
+        del word_to_idx[word]
     # add one for padding
     embeddings.append(np.zeros(len(embeddings[0])))
-    padding_idx = i+1
     embeddings = np.array(embeddings)
+    padding_idx = embeddings.shape[0] - 1
     return word_to_idx, embeddings, padding_idx 
 
 
@@ -250,17 +252,26 @@ class EvalQuestionDataset(QuestionDataset):
 class AndroidEvalQuestionDataset(QuestionDataset):
     # Same idea as UbuntuEval, only difference is text_tokenized corpus file will be different, and
     # no bm25scores. Not that we're using bm25 for UbuntuEval anyways.
-    def __init__(self, text_tokenized, eval_pos_file, eval_neg_file, word_to_idx, padding_idx, truncate=100, test_subset=None):
+    def __init__(self, text_tokenized, eval_pos_file, eval_neg_file, word_to_idx, padding_idx, truncate=100, test_subset=None, num_negs=None):
         self.eval_id_instances = read_android_eval_ids(eval_pos_file, eval_neg_file, test_subset)
         QuestionDataset.__init__(self, text_tokenized, word_to_idx, padding_idx, truncate)
-    
+        self.num_negs = num_negs
+        
     def __len__(self):
         return len(self.eval_id_instances)
     
     def __getitem__(self, index):
         (q_id, candidate_ids, labels) = self.eval_id_instances[index]
+        pos_id = candidate_ids[0]
+        pos_label = labels[0]
+        if self.num_negs is None:
+            negative_ids = candidate_ids[1:]
+        else:
+            negative_ids = random.sample(candidate_ids[1:], self.num_negs)
+        candidate_ids = [pos_id] + negative_ids
+        candidate_labels = [1] + [0]*self.num_negs
         item = self.get_q_candidate_dict(q_id, candidate_ids)
-        item['labels'] = Tensor(labels)
+        item['labels'] = Tensor(candidate_labels)
         return item    
 
 

@@ -19,7 +19,7 @@ def read_text_tokenized(text_tokenized_file, truncate_length=100):
     print('read corpus', text_tokenized_file)
     question_id_to_title_body_tuple = {}
     for line in open(text_tokenized_file, 'r'):
-        question_id, title, body = line.split('\t')
+        question_id, title, body = line.lower().split('\t')
         title = title.split()[:truncate_length]
         body = body.split()[:truncate_length]
         if len(title) == 0:
@@ -127,10 +127,11 @@ def read_word_embeddings(word_embeddings_file):
     # last vector might not be full length
     if len(vector) < len(embeddings[0]):
         embeddings.pop()
+        del word_to_idx[word]
     # add one for padding
     embeddings.append(np.zeros(len(embeddings[0])))
-    padding_idx = i+1
     embeddings = np.array(embeddings)
+    padding_idx = embeddings.shape[0] - 1
     return word_to_idx, embeddings, padding_idx 
 
 
